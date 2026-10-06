@@ -41,12 +41,13 @@ if 'modules.chatbot' in sys.modules:
 from modules.language import get_text
 from modules.styles import load_styles
 
-init_db()
-load_styles()
-
 if 'user'     not in st.session_state: st.session_state.user     = None
 if 'language' not in st.session_state: st.session_state.language = 'english'
+if 'theme'    not in st.session_state: st.session_state.theme    = 'midnight'
 if 'page'     not in st.session_state: st.session_state.page     = 'home'
+
+init_db()
+load_styles(st.session_state.theme)
 
 def t(key):
     return get_text(key, st.session_state.language)
@@ -56,10 +57,26 @@ with st.sidebar:
     st.markdown(
         "<div style='text-align:center;padding:1rem 0 0.5rem;'>"
         + logo_sidebar_html +
-        "<div style='font-weight:700;color:#e6edf3;font-size:0.95rem;margin-top:0.4rem;'>"
+        "<div style='font-weight:700;font-size:0.95rem;margin-top:0.4rem;'>"
         "Community Hub</div></div>",
         unsafe_allow_html=True
     )
+
+    st.markdown("### 🎨 Theme")
+    themes = {
+        'midnight': '🌙 Midnight Dark (Default)',
+        'pearl_white': '☀️ Pearl White (Light)',
+        'emerald_green': '🌿 Emerald Mint (Fresh)'
+    }
+    theme_options = list(themes.values())
+    current_theme_name = themes.get(st.session_state.theme, '🌙 Midnight Dark (Default)')
+    theme_idx = theme_options.index(current_theme_name) if current_theme_name in theme_options else 0
+    
+    selected_theme = st.selectbox("Select Theme", theme_options, index=theme_idx, key="theme_select", label_visibility="collapsed")
+    for tk, tv in themes.items():
+        if tv == selected_theme and st.session_state.theme != tk:
+            st.session_state.theme = tk
+            st.rerun()
 
     st.markdown("### 🌐 Language")
     languages = {
@@ -95,13 +112,14 @@ with st.sidebar:
         gender_icon = "👨‍💼" if u.get('gender') == 'Male' else "👩‍💼"
         user_role   = "⚙️ Admin" if u.get('is_admin') else "👤 User"
         st.markdown(
-            "<div style='background:#1a2332;border:1px solid #2d4a8a;border-radius:10px;"
-            "padding:1rem;text-align:center;'>"
-            "<div style='font-size:2rem;'>" + gender_icon + "</div>"
-            "<div style='font-weight:600;color:#e6edf3;margin-top:0.3rem;'>" + str(u.get('name','')) + "</div>"
-            "<div style='color:#8b949e;font-size:0.8rem;'>" + str(u.get('location','')) + "</div>"
-            "<div style='margin-top:0.4rem;font-size:0.72rem;color:#60a5fa;'>" + user_role + "</div>"
-            "</div>",
+            f"""
+            <div class='sidebar-user-card'>
+                <div style='font-size:2rem;'>{gender_icon}</div>
+                <div class='user-card-name'>{u.get('name','')}</div>
+                <div class='user-card-loc'>{u.get('location','')}</div>
+                <div class='user-card-role'>{user_role}</div>
+            </div>
+            """,
             unsafe_allow_html=True
         )
         st.markdown("<br>", unsafe_allow_html=True)

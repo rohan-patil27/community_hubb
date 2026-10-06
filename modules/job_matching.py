@@ -2,30 +2,58 @@ import streamlit as st
 from modules.database import get_conn
 import re
 
+def parse_skills_list(text):
+    if not text:
+        return []
+    raw = [s.strip() for s in re.split(r'[,;\n]+', str(text)) if s.strip()]
+    cleaned = []
+    seen = set()
+    for item in raw:
+        c = re.sub(r'\s+', ' ', item).strip()
+        if c and c.lower() not in seen:
+            seen.add(c.lower())
+            cleaned.append(c)
+    return cleaned
+
+def is_skill_phrase_match(user_skill, job_skill):
+    u = user_skill.lower().strip()
+    j = job_skill.lower().strip()
+    if u == j or u in j or j in u:
+        return True
+    u_words = set(re.findall(r'\b[a-z0-9]+\b', u))
+    j_words = set(re.findall(r'\b[a-z0-9]+\b', j))
+    if u_words and j_words:
+        overlap = len(u_words & j_words) / max(len(j_words), len(u_words))
+        if overlap >= 0.7:
+            return True
+    return False
+
+def get_matched_skills_pair(user_skills_str, job_skills_str):
+    user_skills = parse_skills_list(user_skills_str)
+    job_skills = parse_skills_list(job_skills_str)
+    if not job_skills:
+        return [], job_skills
+    
+    matched = []
+    for js in job_skills:
+        for us in user_skills:
+            if is_skill_phrase_match(us, js):
+                matched.append(js)
+                break
+    return matched, job_skills
+
 def skill_match_score(user_skills_str, job_skills_str):
-    def normalize(s):
-        s = (s or "").lower()
-        s = re.sub(r'[^a-z0-9\s,]', '', s)
-        tokens = set(x.strip() for x in re.split(r'[,\s]+', s) if x.strip())
-        return tokens
-    user_sk = normalize(user_skills_str or "")
-    job_sk  = normalize(job_skills_str  or "")
-    if not job_sk: return 0.0
-    return min(len(user_sk & job_sk) / len(job_sk), 1.0)
+    matched, job_skills = get_matched_skills_pair(user_skills_str, job_skills_str)
+    if not job_skills:
+        return 0.0
+    return min(len(matched) / len(job_skills), 1.0)
 
 def get_matching_skills_explanation(user_skills_str, job_skills_str):
-    def get_tokens(s):
-        s = (s or "").lower()
-        s = re.sub(r'[^a-z0-9\s,]', '', s)
-        return set(x.strip() for x in re.split(r'[,\s]+', s) if x.strip())
-    
-    u_tokens = get_tokens(user_skills_str)
-    j_tokens = get_tokens(job_skills_str)
-    matched = u_tokens & j_tokens
+    matched, job_skills = get_matched_skills_pair(user_skills_str, job_skills_str)
     
     if matched:
-        matched_list = ", ".join(sorted(matched))
-        return f"💡 <b>Why this match?</b> Matching skills found in your profile: <span style='color:#34d399;font-weight:600;'>{matched_list}</span> ({len(matched)} of {len(j_tokens)} required skills match)"
+        matched_list = ", ".join(matched)
+        return f"💡 <b>Why this match?</b> Matching skills found in your profile: <span class='why-match-skills'>{matched_list}</span> ({len(matched)} of {len(job_skills)} required skills match)"
     else:
         return "💡 <b>Why this match?</b> General match based on location and background (Update your skills above for a higher AI score)"
 
@@ -59,11 +87,11 @@ def show_job_matching(user, t):
         <div class='info-box' style='display:flex;align-items:center;gap:1rem;flex-wrap:wrap;'>
             <span style='font-size:2rem;'>{gender_icon}</span>
             <div>
-                <div style='font-weight:600;color:#e6edf3;font-size:1.05rem;'>{user['name']}</div>
-                <div style='color:#8b949e;font-size:0.85rem;margin-top:0.25rem;'>
+                <div style='font-weight:700;font-size:1.05rem;'>{user['name']}</div>
+                <div style='font-size:0.85rem;margin-top:0.25rem;opacity:0.9;'>
                     📍 {user.get('location','N/A')} &nbsp;|&nbsp; 
                     🎓 {user.get('education','N/A')} &nbsp;|&nbsp; 
-                    🎯 <b style='color:#60a5fa;'>Preferred Roles / Skills:</b> <span style='color:#cbd5e1;'>{user_skills_display}</span>
+                    🎯 <b>Preferred Roles / Skills:</b> <span>{user_skills_display}</span>
                 </div>
             </div>
         </div>
@@ -213,13 +241,13 @@ def show_job_matching(user, t):
         why_match_html = get_matching_skills_explanation(user_skills, job['required_skills'])
 
         card_html = (
-            "<div class='job-card' style='background:#161b22;border:1px solid #21262d;border-radius:14px;padding:1.25rem;margin-bottom:1rem;position:relative;'>"
+            "<div class='job-card' style='position:relative;'>"
             "<div style='display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:0.5rem;'>"
             "<div>"
-            f"<div style='font-family:Sora,sans-serif;font-size:1.15rem;font-weight:700;color:#ffffff;'>{job['title']}</div>"
-            f"<div style='color:#94a3b8;font-size:0.88rem;margin-top:0.25rem;display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;'>🏢 {job['company']} {verified_badge}</div>"
+            f"<div class='job-title'>{job['title']}</div>"
+            f"<div class='job-company' style='margin-top:0.25rem;display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;'>🏢 {job['company']} {verified_badge}</div>"
             "</div>"
-            f"<div style='background:rgba(59,130,246,0.15);color:#60a5fa;border:1px solid #3b82f6;border-radius:20px;padding:4px 12px;font-size:0.85rem;font-weight:700;'>🤖 {score_pct}% Match</div>"
+            f"<div class='match-score' style='position:static;'>🤖 {score_pct}% Match</div>"
             "</div>"
             "<div style='display:flex;flex-wrap:wrap;gap:0.5rem;margin:0.75rem 0;'>"
             f"<span class='badge badge-blue' style='font-size:0.8rem;'>📍 {job['location']}</span>"
@@ -227,13 +255,13 @@ def show_job_matching(user, t):
             f"<span class='badge badge-purple' style='font-size:0.8rem;'>🕐 {job['job_type']}</span>"
             f"<span class='badge badge-orange' style='font-size:0.8rem;'>🎓 {job['min_education']}</span>"
             "</div>"
-            f"<div style='color:#cbd5e1;font-size:0.88rem;line-height:1.5;margin-bottom:0.6rem;'>{job['description']}</div>"
-            f"<div style='margin-bottom:0.6rem;'><span style='color:#8b949e;font-size:0.8rem;'>🔧 Required Skills: </span>{skills_pills}</div>"
-            f"<div style='background:#0d1117;border-left:3px solid #3b82f6;border-radius:8px;padding:8px 12px;margin:0.6rem 0;font-size:0.82rem;color:#94a3b8;'>{why_match_html}</div>"
+            f"<div class='job-desc'>{job['description']}</div>"
+            f"<div style='margin-bottom:0.6rem;'><span class='stat-label'>🔧 Required Skills: </span>{skills_pills}</div>"
+            f"<div class='job-why-match'>{why_match_html}</div>"
             f"<div class='match-bar-container' style='margin-top:0.6rem;'><div class='match-bar' style='width:{score_pct}%;background:{bar_color};'></div></div>"
-            "<div style='display:flex;align-items:center;justify-content:space-between;margin-top:0.6rem;padding-top:0.6rem;border-top:1px solid #21262d;'>"
-            f"<div style='display:flex;align-items:center;gap:0.5rem;'><span style='color:#f59e0b;font-size:0.9rem;'>{stars_str}</span><span style='color:#8b949e;font-size:0.78rem;'>{avg_rating}/5 ({rating_cnt} reviews)</span></div>"
-            f"<div style='color:#60a5fa;font-weight:600;font-size:0.82rem;'>📞 {job['contact']}</div>"
+            "<div style='display:flex;align-items:center;justify-content:space-between;margin-top:0.6rem;padding-top:0.6rem;border-top:1px solid rgba(128,128,128,0.2);'>"
+            f"<div style='display:flex;align-items:center;gap:0.5rem;'><span style='color:#f59e0b;font-size:0.9rem;'>{stars_str}</span><span class='stat-label'>{avg_rating}/5 ({rating_cnt} reviews)</span></div>"
+            f"<div class='job-company' style='font-weight:600;font-size:0.82rem;'>📞 {job['contact']}</div>"
             "</div>"
             "</div>"
         )
